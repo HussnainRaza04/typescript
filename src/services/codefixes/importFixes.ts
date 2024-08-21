@@ -85,6 +85,7 @@ import {
     isFullSourceFile,
     isIdentifier,
     isImportableFile,
+    isImportClause,
     isImportDeclaration,
     isImportEqualsDeclaration,
     isIntrinsicJsxName,
@@ -229,6 +230,7 @@ export interface ImportAdder {
     addImportFromExportedSymbol: (exportedSymbol: Symbol, isValidTypeOnlyUseSite?: boolean, referenceImport?: ImportOrRequireAliasDeclaration) => void;
     addImportForNonExistentExport: (exportName: string, exportingFileName: string, exportKind: ExportKind, exportedMeanings: SymbolFlags, isImportUsageValidAsTypeOnly: boolean) => void;
     addImportForUnresolvedIdentifier: (context: CodeFixContextBase, symbolToken: Identifier, useAutoImportProvider: boolean) => void;
+    addImportForExternalModuleSymbol: (symbol: Symbol, symbolName: string, isValidTypeOnlyUseSite: boolean, referenceImport?: ImportOrRequireAliasDeclaration) => void;
     addVerbatimImport: (declaration: AnyImportOrRequireStatement | ImportOrRequireAliasDeclaration) => void;
     removeExistingImport: (declaration: ImportOrRequireAliasDeclaration) => void;
     writeFixes: (changeTracker: textChanges.ChangeTracker, oldFileQuotePreference?: QuotePreference) => void;
@@ -257,7 +259,7 @@ function createImportAdderWorker(sourceFile: SourceFile | FutureSourceFile, prog
     type NewImportsKey = `${0 | 1}|${string}`;
     /** Use `getNewImportEntry` for access */
     const newImports = new Map<NewImportsKey, Mutable<ImportsCollection & { useRequire: boolean; }>>();
-    return { addImportFromDiagnostic, addImportFromExportedSymbol, writeFixes, hasFixes, addImportForUnresolvedIdentifier, addImportForNonExistentExport, removeExistingImport, addVerbatimImport };
+    return { addImportFromDiagnostic, addImportFromExportedSymbol, writeFixes, hasFixes, addImportForUnresolvedIdentifier, addImportForNonExistentExport, addImportForExternalModuleSymbol, removeExistingImport, addVerbatimImport };
 
     function addVerbatimImport(declaration: AnyImportOrRequireStatement | ImportOrRequireAliasDeclaration) {
         verbatimImports.add(declaration);
@@ -356,6 +358,35 @@ function createImportAdderWorker(sourceFile: SourceFile | FutureSourceFile, prog
             };
             addImport({ fix, symbolName: exportName, errorIdentifierText: exportName });
         }
+    }
+
+    function addImportForExternalModuleSymbol(symbol: Symbol, symbolName: string, isValidTypeOnlyUseSite: boolean, referenceImport?: ImportOrRequireAliasDeclaration) {
+        const useRequire = shouldUseRequire(sourceFile, program);
+        const moduleSpecifier = moduleSpecifiers.getLocalModuleSpecifierBetweenFileNames(
+            sourceFile,
+            Debug.checkDefined(symbol.valueDeclaration).getSourceFile().fileName,
+            compilerOptions,
+            createModuleSpecifierResolutionHost(program, host),
+        );
+        let info: FixInfo = {
+            fix: { kind: ImportFixKind.AddNew, importKind: ImportKind.Namespace, addAsTypeOnly: isValidTypeOnlyUseSite ? AddAsTypeOnly.Allowed : AddAsTypeOnly.NotAllowed, useRequire, moduleSpecifierKind: undefined, moduleSpecifier },
+            symbolName,
+            errorIdentifierText: undefined,
+        };
+        if (referenceImport && isValidTypeOnlyUseSite && isImportClause(referenceImport)) {
+            info = {
+                ...info,
+                fix: {
+                    kind: ImportFixKind.AddNew,
+                    importKind: isNamespaceImport(referenceImport) ? ImportKind.Namespace : ImportKind.Default,
+                    addAsTypeOnly: isTypeOnlyImportDeclaration(referenceImport) ? AddAsTypeOnly.Required : AddAsTypeOnly.Allowed,
+                    useRequire,
+                    moduleSpecifierKind: undefined,
+                    moduleSpecifier,
+                },
+            };
+        }
+        addImport(info);
     }
 
     function removeExistingImport(declaration: ImportOrRequireAliasDeclaration) {

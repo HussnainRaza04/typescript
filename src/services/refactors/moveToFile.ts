@@ -18,6 +18,7 @@ import {
     contains,
     createFutureSourceFile,
     createModuleSpecifierResolutionHost,
+    createTextRangeFromNode,
     createTextRangeFromSpan,
     Debug,
     Declaration,
@@ -964,9 +965,10 @@ function inferNewFileName(importsFromNewFile: Map<Symbol, unknown>, movedSymbols
 }
 
 function forEachReference(node: Node, checker: TypeChecker, enclosingRange: TextRange | undefined, onReference: (s: Symbol, isValidTypeOnlyUseSite: boolean) => void) {
+    const sourceFile = node.getSourceFile();
     node.forEachChild(function cb(node) {
         if (isIdentifier(node) && !isDeclarationName(node)) {
-            if (enclosingRange && !rangeContainsRange(enclosingRange, node)) {
+            if (enclosingRange && !rangeContainsRange(enclosingRange, createTextRangeFromNode(node, sourceFile))) {
                 return;
             }
             const sym = checker.getSymbolAtLocation(node);
@@ -1127,18 +1129,26 @@ export function getExistingLocals(sourceFile: SourceFile, statements: readonly S
         const declaration = importFromModuleSpecifier(moduleSpecifier);
         if (
             isImportDeclaration(declaration) && declaration.importClause &&
-            declaration.importClause.namedBindings && isNamedImports(declaration.importClause.namedBindings)
+            declaration.importClause.namedBindings
         ) {
-            for (const e of declaration.importClause.namedBindings.elements) {
-                const symbol = checker.getSymbolAtLocation(e.propertyName || e.name);
+            if (isNamespaceImport(declaration.importClause.namedBindings)) {
+                const symbol = declaration.importClause.namedBindings.symbol;
                 if (symbol) {
                     existingLocals.add(skipAlias(symbol, checker));
+                }
+            }
+            else if (isNamedImports(declaration.importClause.namedBindings)) {
+                for (const e of declaration.importClause.namedBindings.elements) {
+                    const symbol = e.symbol;
+                    if (symbol) {
+                        existingLocals.add(skipAlias(symbol, checker));
+                    }
                 }
             }
         }
         if (isVariableDeclarationInitializedToRequire(declaration.parent) && isObjectBindingPattern(declaration.parent.name)) {
             for (const e of declaration.parent.name.elements) {
-                const symbol = checker.getSymbolAtLocation(e.propertyName || e.name);
+                const symbol = e.symbol;
                 if (symbol) {
                     existingLocals.add(skipAlias(symbol, checker));
                 }
