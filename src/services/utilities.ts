@@ -389,6 +389,7 @@ import {
     visitEachChild,
     VoidExpression,
     walkUpParenthesizedExpressions,
+    WriterContextOut,
     YieldExpression,
 } from "./_namespaces/ts.js";
 
@@ -3054,9 +3055,9 @@ export function mapToDisplayParts(writeDisplayParts: (writer: DisplayPartsSymbol
 }
 
 /** @internal */
-export function typeToDisplayParts(typechecker: TypeChecker, type: Type, enclosingDeclaration?: Node, flags: TypeFormatFlags = TypeFormatFlags.None): SymbolDisplayPart[] {
+export function typeToDisplayParts(typechecker: TypeChecker, type: Type, enclosingDeclaration?: Node, flags: TypeFormatFlags = TypeFormatFlags.None, verbosityLevel?: number, out?: WriterContextOut): SymbolDisplayPart[] {
     return mapToDisplayParts(writer => {
-        typechecker.writeType(type, enclosingDeclaration, flags | TypeFormatFlags.MultilineObjectLiterals | TypeFormatFlags.UseAliasDefinedOutsideCurrentScope, writer);
+        typechecker.writeType(type, enclosingDeclaration, flags | TypeFormatFlags.MultilineObjectLiterals | TypeFormatFlags.UseAliasDefinedOutsideCurrentScope, writer, verbosityLevel, out);
     });
 }
 
